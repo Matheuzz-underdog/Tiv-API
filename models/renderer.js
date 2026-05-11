@@ -236,25 +236,17 @@ async function render(imageBuffer, options = {}) {
   const cellW = cellSize;
   const cellH = cellSize * 2; // cada celda cubre 2 filas de píxeles
 
-  // FIX BUG-03 + Q-01: Pipeline Sharp unificado con auto-rotate EXIF.
-  // Antes: dos llamadas separadas a sharp() sin .rotate(), lo que:
-  //   1. Procesaba imágenes de móvil rotadas incorrectamente (EXIF ignorado)
-  //   2. Calculaba scaledH con dimensiones pre-rotación (podía ser incorrecto)
-  // Ahora: .rotate() aplica la orientación EXIF antes de leer metadatos y de
-  //        escalar, garantizando proporciones correctas en todos los casos.
+  // Q-01: Pipeline Sharp unificado - una sola llamada con fit: 'inside'.
+  // Antes (FIX BUG-03): dos llamadas a sharp(), la segunda con fit:'fill' que
+  //   deformaba el aspect ratio de la imagen.
+  // Ahora: una sola llamada que usa fit:'inside' para mantener proporciones
+  //   correctas, eliminando el cálculo manual de scaledH.
   //
-  // Primera llamada: solo metadatos post-rotación (rápida, no decodifica píxeles)
-  const { width: origW, height: origH } = await sharp(imageBuffer)
-    .rotate()
-    .metadata();
-
-  // *2 porque tiv procesa 2 filas de píxeles por celda de carácter
-  const scaledH = Math.round((origH / origW) * columns * 2);
-
-  // Segunda llamada: pipeline completo con rotate incluido
+  // El parámetro columns controla el ancho en celdas de carácter.
+  // Sharp calcula automáticamente el height manteniendo el aspect ratio.
   const { data, info } = await sharp(imageBuffer)
-    .rotate()
-    .resize(columns, scaledH, { fit: 'fill', kernel: 'lanczos3' })
+    .rotate()  // Aplica orientación EXIF antes de procesar
+    .resize(columns, null, { fit: 'inside', kernel: 'lanczos3' })
     .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
