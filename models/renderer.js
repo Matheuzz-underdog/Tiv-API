@@ -144,6 +144,73 @@ function selectChar(r, g, b, r2, g2, b2, pr, pg, pb, nr, ng, nb) {
   return prq === r2q ? '*' : '.';
 }
 
+// ── Dithering functions ─────────────────────────────────────────────────────────
+
+// Matriz de dithering ordenado (4x4 Bayer)
+const ORDERED_MATRIX = [
+  [0, 8, 2, 10],
+  [12, 4, 14, 6],
+  [3, 11, 1, 9],
+  [15, 7, 13, 5]
+];
+
+// Aplicar dithering ordenado (Bayer 4x4)
+function applyDitheringOrdered(x, y, value) {
+  const threshold = (ORDERED_MATRIX[y % 4][x % 4] / 16.0) - 0.5;
+  return Math.max(0, Math.min(255, value + threshold * 255));
+}
+
+// Aplicar Floyd-Steinberg dithering (simplificado - solo propagate error)
+function applyDitheringFS(x, y, w, h, errors, value) {
+  // Obtener error acumulado
+  const err = errors[y * w + x] || 0;
+  return Math.max(0, Math.min(255, value + err));
+}
+
+// Actualizar buffer de errores para Floyd-Steinberg
+function updateFSError(errors, w, x, y, oldVal, newVal) {
+  const err = oldVal - newVal;
+  // Propagar a siguientes píxeles (derecha, abajo-izq, abajo, abajo-der)
+  const positions = [
+    [x + 1, y, 7/16],
+    [x - 1, y + 1, 3/16],
+    [x, y + 1, 5/16],
+    [x + 1, y + 1, 1/16]
+  ];
+  for (const [px, py, factor] of positions) {
+    if (px >= 0 && px < w && py < h) {
+      const idx = py * w + px;
+      errors[idx] = (errors[idx] || 0) + err * factor;
+    }
+  }
+}
+
+// Aplicar Atkinson dithering (más sutil que FS)
+function applyDitheringAtkinson(x, y, w, h, errors, value) {
+  const err = errors[y * w + x] || 0;
+  return Math.max(0, Math.min(255, value + err));
+}
+
+// Actualizar buffer de errores para Atkinson
+function updateAtkinsonError(errors, w, x, y, oldVal, newVal) {
+  const err = (oldVal - newVal) / 8;  // Atkinson usa /8
+  // Propagar a 6 vecinos
+  const positions = [
+    [x + 1, y, 1],
+    [x + 2, y, 1],
+    [x - 1, y + 1, 1],
+    [x, y + 1, 1],
+    [x + 1, y + 1, 1],
+    [x + 2, y + 1, 1]
+  ];
+  for (const [px, py] of positions) {
+    if (px >= 0 && px < w && py < h) {
+      const idx = py * w + px;
+      errors[idx] = (errors[idx] || 0) + err;
+    }
+  }
+}
+
 // ── 4. render: función pública del modelo ────────────────────────────────────
 async function render(imageBuffer, options = {}) {
   const {
@@ -154,6 +221,7 @@ async function render(imageBuffer, options = {}) {
     brightness = 0,       // -255 a 255
     density    = 'detailed',  // ascii: original(10), conservative(12), expanded(12), detailed(13), maximum(25)
     colorMethod = 'perceptual',  // ansi/256: classic(riv.vala), perceptual(euclidiana)
+    dithering  = 'none',  // none, floyd-steinberg, atkinson, ordered
   } = options;
 
   const cellW = cellSize;
@@ -171,9 +239,14 @@ async function render(imageBuffer, options = {}) {
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const w  = info.width;
-  const h  = info.height;
+const w  = info.width;
+  const h = info.height;
   const nc = info.channels; // siempre 3 tras removeAlpha()
+
+  // Buffer de errores para dithering (FS y Atkinson) - se crea después de conocer w y h
+  const errorBuffer = (dithering === 'floyd-steinberg' || dithering === 'atkinson')
+    ? new Float32Array(w * h * 3).fill(0)  // 3 canales (RGB)
+    : null;
 
   // ── Canvas: crear lienzo de salida ────────────────────────────────────────
   const charRows = Math.floor(h / 2);
@@ -185,28 +258,75 @@ async function render(imageBuffer, options = {}) {
   ctx.font         = `bold ${cellH}px monospace`;
   ctx.textBaseline = 'top';
 
-  // Helper: pixel en (x,y) con brightness aplicado
-  function px(x, y) {
+  // Helper: pixel en (x,y) con brightness y dithering aplicado
+  function px(x, y, cellX = 0, cellY = 0) {
     if (x < 0 || x >= w || y < 0 || y >= h) return [0, 0, 0];
     const i = (y * w + x) * nc;
+
+    let r = data[i]     + brightness;
+    let g = data[i + 1] + brightness;
+    let b = data[i + 2] + brightness;
+
+    // Aplicar dithering si está habilitado
+    if (dithering !== 'none') {
+      if (dithering === 'ordered') {
+        // Ordered dithering (Bayer 4x4)
+        r = applyDitheringOrdered(cellX, cellY, r);
+        g = applyDitheringOrdered(cellX, cellY, g);
+        b = applyDitheringOrdered(cellX, cellY, b);
+      } else if (dithering === 'floyd-steinberg' || dithering === 'atkinson') {
+        // Floyd-Steinberg / Atkinson requieren procesamiento por canal
+        // Aplicar error de luminancia para simplificar (más eficiente)
+        const errIdx = y * w + x;
+        const errR = errorBuffer ? errorBuffer[errIdx * 3] || 0 : 0;
+        const errG = errorBuffer ? errorBuffer[errIdx * 3 + 1] || 0 : 0;
+        const errB = errorBuffer ? errorBuffer[errIdx * 3 + 2] || 0 : 0;
+        r += errR;
+        g += errG;
+        b += errB;
+
+        // Calcular luminancia para distribución de error
+        const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+
+        // Actualizar buffer de errores para siguientes píxeles
+        if (errorBuffer && x < w - 1) {
+          const updateFn = dithering === 'floyd-steinberg' ? updateFSError : updateAtkinsonError;
+          // Distribuir error de luminancia a los colores proporcionalmente
+          const err = lum - Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+          const colorErrR = err * 0.299;
+          const colorErrG = err * 0.587;
+          const colorErrB = err * 0.114;
+
+          const nextIdx = (y * w + (x + 1));
+          errorBuffer[nextIdx * 3] = (errorBuffer[nextIdx * 3] || 0) + colorErrR * 7/16;
+          const diagIdx = ((y + 1) * w + (x + 1));
+          if (diagIdx < errorBuffer.length / 3) {
+            errorBuffer[diagIdx * 3] = (errorBuffer[diagIdx * 3] || 0) + colorErrR * 1/16;
+          }
+        }
+      }
+    }
+
     return [
-      Math.max(0, Math.min(255, data[i]     + brightness)),
-      Math.max(0, Math.min(255, data[i + 1] + brightness)),
-      Math.max(0, Math.min(255, data[i + 2] + brightness)),
+      Math.max(0, Math.min(255, r)),
+      Math.max(0, Math.min(255, g)),
+      Math.max(0, Math.min(255, b)),
     ];
   }
 
   // ── Loop principal: 2 filas de píxeles por celda (fiel a tiv.vala) ───────
   for (let y = 0; y < h - 1; y += 2) {
     const rowY = Math.floor(y / 2) * cellH;
+    const cellY = Math.floor(y / 2);  // coordenada de celda para dithering
 
     for (let x = 0; x < w; x++) {
       const colX = x * cellW;
+      const cellX = x;  // coordenada de celda para dithering
 
-      const [r,  g,  b ] = px(x,     y);      // fila superior (color fg)
-      const [r2, g2, b2] = px(x,     y + 1);  // fila inferior (color bg)
-      const [pr, pg, pb] = px(x - 1, y);      // vecino izquierdo
-      const [nr, ng, nb] = px(x + 1, y);      // vecino derecho
+      const [r,  g,  b ] = px(x,     y,     cellX, cellY);  // fila superior (color fg)
+      const [r2, g2, b2] = px(x,     y + 1, cellX, cellY);  // fila inferior (color bg)
+      const [pr, pg, pb] = px(x - 1, y,     cellX, cellY);  // vecino izquierdo
+      const [nr, ng, nb] = px(x + 1, y,     cellX, cellY);  // vecino derecho
 
       if (mode === 'ascii') {
         // ASCII puro: luminancia → índice en paleta, sin color

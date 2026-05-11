@@ -4,6 +4,7 @@ const VALID_MODES    = ['ascii', 'ansi', 'grey', '256', 'rgb'];
 const VALID_FORMATS  = ['png', 'jpg', 'jpeg'];
 const VALID_ASCII_DENSITY = ['original', 'conservative', 'expanded', 'detailed', 'maximum'];
 const VALID_COLOR_METHOD = ['classic', 'perceptual'];  // classic=riv.vala, perceptual=euclidiana
+const VALID_DITHERING = ['none', 'floyd-steinberg', 'atkinson', 'ordered'];  // none=original, fs=suavizado, atkinson=sutil, ordered=retro
 
 // Todos los parámetros de renderizado vienen como query strings (?mode=rgb&cellSize=8)
 // Este middleware los valida, convierte al tipo correcto y los adjunta en req.renderOptions
@@ -16,6 +17,7 @@ function validate(req, res, next) {
     brightness = '0',
     density    = 'detailed',  // para modo ascii: original(10), conservative(12), expanded(12), detailed(13), maximum(25)
     colorMethod = 'perceptual',  // para modos ansi y 256: classic(riv.vala), perceptual(euclidiana)
+    dithering  = 'none',  // none, floyd-steinberg, atkinson, ordered
   } = req.query;
 
   // mode
@@ -76,6 +78,15 @@ function validate(req, res, next) {
     });
   }
 
+  // dithering: tipo de dithering (none, floyd-steinberg, atkinson, ordered)
+  const ditheringLower = dithering.toLowerCase();
+  if (!VALID_DITHERING.includes(ditheringLower)) {
+    return res.status(400).json({
+      error:   `Dithering inválido: "${dithering}"`,
+      valid:   VALID_DITHERING,
+    });
+  }
+
   // Normalizar: jpeg → jpg para que renderer.js solo maneje 'jpg'
   req.renderOptions = {
     mode,
@@ -85,6 +96,7 @@ function validate(req, res, next) {
     brightness: bright,
     density:    densityLower,
     colorMethod: colorMethodLower,
+    dithering:  ditheringLower,
   };
 
   next();

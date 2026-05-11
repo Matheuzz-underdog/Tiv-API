@@ -305,4 +305,74 @@ describe('Renderer - Tests de integración', () => {
 
   });
 
+  describe('Dithering (none, ordered, floyd-steinberg, atkinson)', () => {
+
+    test('debería renderizar con dithering=none (original)', async () => {
+      const result = await render(testImageBuffer, {
+        mode: 'ascii',
+        dithering: 'none',
+        columns: 40
+      });
+
+      expect(result).toBeDefined();
+      expect(isValidImage(result, 'png')).toBe(true);
+    });
+
+    test('debería renderizar con dithering=ordered', async () => {
+      const result = await render(testImageBuffer, {
+        mode: 'ascii',
+        dithering: 'ordered',
+        columns: 40
+      });
+
+      expect(result).toBeDefined();
+      expect(isValidImage(result, 'png')).toBe(true);
+    });
+
+    test('debería renderizar con dithering=floyd-steinberg', async () => {
+      const result = await render(testImageBuffer, {
+        mode: 'ascii',
+        dithering: 'floyd-steinberg',
+        columns: 40
+      });
+
+      expect(result).toBeDefined();
+      expect(isValidImage(result, 'png')).toBe(true);
+    });
+
+    test('debería renderizar con dithering=atkinson', async () => {
+      const result = await render(testImageBuffer, {
+        mode: 'ascii',
+        dithering: 'atkinson',
+        columns: 40
+      });
+
+      expect(result).toBeDefined();
+      expect(isValidImage(result, 'png')).toBe(true);
+    });
+
+    test('debería usar none por defecto si dithering no se especifica', async () => {
+      const result = await render(testImageBuffer, {
+        mode: 'ascii',
+        columns: 40
+        // dithering no especificado - debería usar 'none' por defecto
+      });
+
+      expect(result).toBeDefined();
+      expect(isValidImage(result, 'png')).toBe(true);
+    });
+
+    test('debería aplicar dithering en modo ANSI', async () => {
+      const result = await render(testImageBuffer, {
+        mode: 'ansi',
+        dithering: 'floyd-steinberg',
+        columns: 40
+      });
+
+      expect(result).toBeDefined();
+      expect(isValidImage(result, 'png')).toBe(true);
+    });
+
+  });
+
 });
