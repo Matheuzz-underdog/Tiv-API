@@ -41,13 +41,13 @@ async function uploadUrl(req, res, next) {
   }
 
   try {
-        const response = await axios.get(url, {
-    responseType: 'arraybuffer',
-    timeout: 10000,
-    maxContentLength: 10 * 1024 * 1024,
-    headers: {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      maxContentLength: 10 * 1024 * 1024,
+      headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; tiv-API/1.0)',
-        },
+      },
     });
 
     const contentType = response.headers['content-type'] || '';
