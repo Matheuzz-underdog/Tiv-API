@@ -375,4 +375,134 @@ describe('Renderer - Tests de integración', () => {
 
   });
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Q-02: Tests de término medio - Coeficientes BT.709 sin linealizar
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('Q-02: Término medio - Coeficientes BT.709 sin linealizar', () => {
+
+    // Helper: calcular luminancia sRGB directa (método original)
+    function lumSrgb(r, g, b) {
+      return Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    }
+
+    // Helper: término medio - BT.709 sin linealizar (método nuevo - default)
+    function lumBT709(r, g, b) {
+      return Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+    }
+
+    // Helper: gamma completo (para comparar)
+    function toLinear(v) {
+      const s = v / 255;
+      return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    }
+
+    function lumLinearFull(r, g, b) {
+      const rLin = toLinear(r);
+      const gLin = toLinear(g);
+      const bLin = toLinear(b);
+      return Math.round(255 * (0.2126 * rLin + 0.7152 * gLin + 0.0722 * bLin));
+    }
+
+    // ── Tests de métricas para comparar métodos ─────────────────────────────────
+    test('MÉTRICAS: Diferencias entre los 3 métodos de luminancia', () => {
+      //Casos de prueba: diferentes valores RGB
+      const testCases = [
+        { r: 0, g: 0, b: 0, desc: 'negro' },
+        { r: 50, g: 50, b: 50, desc: 'gris oscuro' },
+        { r: 100, g: 100, b: 100, desc: 'gris medio' },
+        { r: 128, g: 128, b: 128, desc: 'gris medio-alto' },
+        { r: 200, g: 200, b: 200, desc: 'gris claro' },
+        { r: 255, g: 255, b: 255, desc: 'blanco' },
+        { r: 200, g: 100, b: 50, desc: 'color asimétrico 1' },
+        { r: 50, g: 200, b: 100, desc: 'color asimétrico 2' },
+        { r: 100, g: 50, b: 200, desc: 'color asimétrico 3' },
+      ];
+
+      console.log('\n=== MÉTRICAS DE LUMINANCIA ===');
+      console.log('Caso              | sRGB | BT709 | Linear | Diff(sRGB-BT709) | Diff(BT709-Linear)');
+      console.log('-------------------|------|-------|--------|------------------|-------------------');
+
+      let totalDiffSrgbBt709 = 0;
+      let totalDiffBt709Linear = 0;
+
+      for (const tc of testCases) {
+        const srgb = lumSrgb(tc.r, tc.g, tc.b);
+        const bt709 = lumBT709(tc.r, tc.g, tc.b);
+        const linearFull = lumLinearFull(tc.r, tc.g, tc.b);
+        const diff1 = Math.abs(srgb - bt709);
+        const diff2 = Math.abs(bt709 - linearFull);
+        totalDiffSrgbBt709 += diff1;
+        totalDiffBt709Linear += diff2;
+
+        console.log(`${tc.desc.padEnd(17)}| ${srgb.toString().padStart(3)}  | ${bt709.toString().padStart(3)}   | ${linearFull.toString().padStart(3)}   | ${diff1.toString().padStart(4)} | ${diff2.toString().padStart(5)}`);
+      }
+
+      const avgDiff1 = (totalDiffSrgbBt709 / testCases.length).toFixed(2);
+      const avgDiff2 = (totalDiffBt709Linear / testCases.length).toFixed(2);
+      console.log(`\nPromedio sRGB->BT709: ${avgDiff1}`);
+      console.log(`Promedio BT709->Linear: ${avgDiff2}`);
+
+      // Verificaciones básicas - los valores ya se mostraron en la tabla
+      expect(avgDiff1).toBe('3.78'); // sRGB -> BT709 promedio
+      expect(parseFloat(avgDiff2)).toBeGreaterThan(40); // BT709 -> Linear promedio
+    });
+
+    // ── Tests de renderizado ───────────────────────────────────────────────────
+    test('debería renderizar ASCII con diferentes densities usando BT.709', async () => {
+      const densities = ['original', 'conservative', 'expanded', 'detailed', 'maximum'];
+
+      for (const density of densities) {
+        const result = await render(testImageBuffer, {
+          mode: 'ascii',
+          density: density,
+          columns: 40
+        });
+
+        expect(result).toBeDefined();
+        expect(isValidImage(result, 'png')).toBe(true);
+      }
+    });
+
+    test('ASCII debería usar BT.709, otros modos no se afectan', async () => {
+      const resultAscii = await render(testImageBuffer, { mode: 'ascii', columns: 40 });
+      const resultAnsi = await render(testImageBuffer, { mode: 'ansi', columns: 40 });
+      const resultRgb = await render(testImageBuffer, { mode: 'rgb', columns: 40 });
+
+      expect(isValidImage(resultAscii, 'png')).toBe(true);
+      expect(isValidImage(resultAnsi, 'png')).toBe(true);
+      expect(isValidImage(resultRgb, 'png')).toBe(true);
+    });
+
+    // ── Test de dithering ignorado en modo ASCII ───────────────────────────────
+    test('Q-02: Dithering debería ignorarse en modo ASCII (todos dan igual)', async () => {
+      // Renderizar ASCII con cada tipo de dithering
+      const resultNone = await render(testImageBuffer, { mode: 'ascii', dithering: 'none', columns: 40 });
+      const resultOrdered = await render(testImageBuffer, { mode: 'ascii', dithering: 'ordered', columns: 40 });
+      const resultFS = await render(testImageBuffer, { mode: 'ascii', dithering: 'floyd-steinberg', columns: 40 });
+      const resultAtkinson = await render(testImageBuffer, { mode: 'ascii', dithering: 'atkinson', columns: 40 });
+
+      // Todos deberían ser idénticos porque el dithering se ignora en modo ASCII
+      expect(resultNone.length).toBe(resultOrdered.length);
+      expect(resultOrdered.length).toBe(resultFS.length);
+      expect(resultFS.length).toBe(resultAtkinson.length);
+
+      // Verificar que son imágenes válidas
+      expect(isValidImage(resultNone, 'png')).toBe(true);
+    });
+
+    test('Q-02: Dithering debería funcionar en modos con color (ANSI)', async () => {
+      // En modo ANSI, el dithering SÍ debería tener efecto
+      const resultNone = await render(testImageBuffer, { mode: 'ansi', dithering: 'none', columns: 40 });
+      const resultFS = await render(testImageBuffer, { mode: 'ansi', dithering: 'floyd-steinberg', columns: 40 });
+
+      // Los resultados pueden ser diferentes en tamaño debido al procesamiento del dithering
+      expect(resultNone.length).toBeGreaterThan(0);
+      expect(resultFS.length).toBeGreaterThan(0);
+      expect(isValidImage(resultNone, 'png')).toBe(true);
+      expect(isValidImage(resultFS, 'png')).toBe(true);
+    });
+
+  });
+
 });

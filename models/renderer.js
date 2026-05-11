@@ -124,6 +124,16 @@ function applyColor(mode, r, g, b, colorMethod = 'perceptual') {
   }
 }
 
+// ── Q-02: Término medio - Coeficientes BT.709 sin linealizar ──────────────────
+// Término medio entre sRGB directo (0.299/0.587/0.114) y gamma-corrected completo.
+// Usa coeficientes BT.709 que son más precisos perceptualmente,
+// pero sin el costo de linealizar cada canal primero.
+function getLuminanceBT709(r, g, b) {
+  // Coeficientes ITU-R BT.709 (más precisos que NTSC 0.299/0.587/0.114)
+  // operando directamente sobre valores sRGB
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 // ── 4. selectChar: corazón del algoritmo tiv (sin cambios) ───────────────────
 // Cuantiza a 0-7 (>> 5) y elige el carácter según el contexto de bordes.
 function selectChar(r, g, b, r2, g2, b2, pr, pg, pb, nr, ng, nb) {
@@ -218,6 +228,11 @@ async function render(imageBuffer, options = {}) {
     dithering   = 'none',
   } = options;
 
+  // Q-02: En modo ASCII, forzar dithering = 'none' porque
+  // el resultado es binario (blanco/negro) y el dithering no tiene sentido
+  // (solo corrompería el resultado)
+  const effectiveDithering = mode === 'ascii' ? 'none' : dithering;
+
   const cellW = cellSize;
   const cellH = cellSize * 2; // cada celda cubre 2 filas de píxeles
 
@@ -251,13 +266,14 @@ async function render(imageBuffer, options = {}) {
   // Buffer de errores para FS y Atkinson: 3 canales RGB por pixel
   // FIX BUG-01: el buffer ahora se usa correctamente (antes se inicializaba pero
   //             los errores siempre eran 0 por el bug en px())
-  const errorBuffer = (dithering === 'floyd-steinberg' || dithering === 'atkinson')
+  // Q-02: usa effectiveDithering (que fuerza 'none' en modo ASCII)
+  const errorBuffer = (effectiveDithering === 'floyd-steinberg' || effectiveDithering === 'atkinson')
     ? new Float32Array(w * h * 3) // Float32Array ya inicializa a 0
     : null;
 
   // Propagador activo según el modo de dithering seleccionado
-  const propagateError = dithering === 'floyd-steinberg' ? propagateFSError
-    : dithering === 'atkinson'     ? propagateAtkinsonError
+  const propagateError = effectiveDithering === 'floyd-steinberg' ? propagateFSError
+    : effectiveDithering === 'atkinson'     ? propagateAtkinsonError
     : null;
 
   // ── Canvas de salida ──────────────────────────────────────────────────────
@@ -282,7 +298,7 @@ async function render(imageBuffer, options = {}) {
     let g = data[i + 1] + brightness;
     let b = data[i + 2] + brightness;
 
-    if (dithering === 'ordered') {
+    if (effectiveDithering === 'ordered') {
       // FIX: coordenadas de pixel reales (antes se pasaban coordenadas de celda,
       //      mezclando escalas y rompiendo el patrón de la matriz Bayer)
       r = applyDitheringOrdered(x, y, r);
@@ -319,7 +335,8 @@ async function render(imageBuffer, options = {}) {
 
       if (mode === 'ascii') {
         const pal = ASCII_PALETTES[density] || ASCII_PALETTES.detailed;
-        const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        // Q-02: Término medio - usar coeficientes BT.709 sin linealizar
+        const lum = Math.round(getLuminanceBT709(r, g, b));
         const idx = Math.min(Math.floor(lum / (255 / pal.length)), pal.length - 1);
 
         // FIX BUG-01: propagar error de cuantización ASCII.
