@@ -370,10 +370,11 @@ async function render(imageBuffer, options = {}) {
     }
   }
 
-  // ── Exportar ──────────────────────────────────────────────────────────────
-  return (format === 'jpg' || format === 'jpeg')
-    ? canvas.toBuffer('image/jpeg', { quality: 0.92 })
-    : canvas.toBuffer('image/png');
+  // ── P-01: Exportar ────────────────────────────────────────────────────────
+  // Antes: canvas.toBuffer() - mantiene todo en RAM antes de enviar
+  // Ahora: retornar canvas + formato para streaming directo al cliente
+  // El controller usará canvas.createPNGStream() o createJPEGStream().pipe(res)
+  return { canvas, format };
 }
 
 module.exports = { render };

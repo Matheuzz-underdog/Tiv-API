@@ -4,17 +4,32 @@ const { render } = require('../models/renderer');
 
 async function renderImage(req, res, next) {
   try {
-    // El modelo recibe el buffer de imagen y las opciones ya validadas
-    const outputBuffer = await render(req.imageBuffer, req.renderOptions);
+    // P-01: El modelo ahora retorna { canvas, format } en lugar del buffer
+    const { canvas, format } = await render(req.imageBuffer, req.renderOptions);
 
-    const { format } = req.renderOptions;
     const contentType = format === 'jpg' ? 'image/jpeg' : 'image/png';
 
+    // P-01: Streaming directo - el cliente recibe datos mientras se codifica
+    // Ya no necesitamos Content-Length porque es streaming
     res.set('Content-Type', contentType);
-    res.set('Content-Length', outputBuffer.length);
-    // Opcional: sugiere un nombre de descarga al browser
     res.set('Content-Disposition', `inline; filename="tiv-render.${format}"`);
-    res.send(outputBuffer);
+
+    // Crear el stream según el formato y hacer pipe directo a la response
+    const stream = format === 'jpg' || format === 'jpeg'
+      ? canvas.createJPEGStream({ quality: 0.92 })
+      : canvas.createPNGStream();
+
+    stream.pipe(res);
+
+    // Manejar errores del stream
+    stream.on('error', (err) => {
+      console.error('Stream error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Error al generar la imagen' });
+      } else {
+        res.end();
+      }
+    });
 
   } catch (err) {
     // Sharp lanza errores específicos cuando la imagen es corrupta o inválida

@@ -44,6 +44,19 @@ function isValidImage(buffer, format) {
   return false;
 }
 
+// P-01: Helper para convertir el resultado del render (canvas + format) a buffer
+// El render ahora retorna { canvas, format } en lugar de buffer directamente
+async function renderToBuffer(imageBuffer, options) {
+  const result = await render(imageBuffer, options);
+  // Si ya es un buffer (legacy), retornarlo directamente
+  if (Buffer.isBuffer(result)) return result;
+  // Si es el nuevo formato { canvas, format }, convertir a buffer
+  const { canvas, format } = result;
+  return format === 'jpg' || format === 'jpeg'
+    ? canvas.toBuffer('image/jpeg', { quality: 0.92 })
+    : canvas.toBuffer('image/png');
+}
+
 describe('Renderer - Tests de integración', () => {
 
   let testImageBuffer;
@@ -56,7 +69,7 @@ describe('Renderer - Tests de integración', () => {
   describe('Renderizado básico', () => {
 
     test('debería renderizar imagen con modo RGB (default)', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'rgb',
         format: 'png',
         columns: 40
@@ -68,7 +81,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar imagen con modo ASCII', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         format: 'png',
         columns: 40
@@ -80,7 +93,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar imagen con modo ANSI', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ansi',
         format: 'png',
         columns: 40
@@ -92,7 +105,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar imagen con modo GREY', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'grey',
         format: 'png',
         columns: 40
@@ -104,7 +117,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar imagen con modo 256', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: '256',
         format: 'png',
         columns: 40
@@ -120,8 +133,8 @@ describe('Renderer - Tests de integración', () => {
   describe('Parámetros de configuración', () => {
 
     test('debería aceptar diferentes valores de columns', async () => {
-      const result20 = await render(testImageBuffer, { mode: 'rgb', columns: 20 });
-      const result80 = await render(testImageBuffer, { mode: 'rgb', columns: 80 });
+      const result20 = await renderToBuffer(testImageBuffer, { mode: 'rgb', columns: 20 });
+      const result80 = await renderToBuffer(testImageBuffer, { mode: 'rgb', columns: 80 });
 
       expect(result20).toBeDefined();
       expect(result80).toBeDefined();
@@ -130,7 +143,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería soportar formato JPG', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'rgb',
         format: 'jpg',
         columns: 40
@@ -141,7 +154,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería aplicar brillo positivo', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'rgb',
         columns: 40,
         brightness: 50
@@ -152,7 +165,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería aplicar brillo negativo', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'rgb',
         columns: 40,
         brightness: -50
@@ -168,7 +181,7 @@ describe('Renderer - Tests de integración', () => {
 
     test('debería usar valores por defecto cuando no se especifican', async () => {
       // Sin opciones - usa defaults: mode=rgb, format=png, columns=80
-      const result = await render(testImageBuffer);
+      const result = await renderToBuffer(testImageBuffer);
 
       expect(result).toBeDefined();
       expect(isValidImage(result, 'png')).toBe(true);
@@ -179,7 +192,7 @@ describe('Renderer - Tests de integración', () => {
   describe('Densidad ASCII (parámetro density)', () => {
 
     test('debería renderizar con density=original (10 chars)', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         density: 'original',
         columns: 40
@@ -190,7 +203,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar con density=conservative (12 chars)', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         density: 'conservative',
         columns: 40
@@ -201,7 +214,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar con density=expanded (12 chars)', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         density: 'expanded',
         columns: 40
@@ -212,7 +225,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar con density=detailed (13 chars)', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         density: 'detailed',
         columns: 40
@@ -223,7 +236,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar con density=maximum (25 chars)', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         density: 'maximum',
         columns: 40
@@ -234,7 +247,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería usar detailed por defecto si density no se especifica', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         columns: 40
         // density no especificado - debería usar 'detailed' por defecto
@@ -249,7 +262,7 @@ describe('Renderer - Tests de integración', () => {
   describe('Método de color (colorMethod para ansi y 256)', () => {
 
     test('debería renderizar ANSI con colorMethod=classic (riv.vala)', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ansi',
         colorMethod: 'classic',
         columns: 40
@@ -260,7 +273,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar ANSI con colorMethod=perceptual (euclidiana)', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ansi',
         colorMethod: 'perceptual',
         columns: 40
@@ -271,7 +284,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar 256 con colorMethod=classic', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: '256',
         colorMethod: 'classic',
         columns: 40
@@ -282,7 +295,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar 256 con colorMethod=perceptual', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: '256',
         colorMethod: 'perceptual',
         columns: 40
@@ -293,7 +306,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería usar perceptual por defecto si colorMethod no se especifica', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ansi',
         columns: 40
         // colorMethod no especificado - debería usar 'perceptual' por defecto
@@ -308,7 +321,7 @@ describe('Renderer - Tests de integración', () => {
   describe('Dithering (none, ordered, floyd-steinberg, atkinson)', () => {
 
     test('debería renderizar con dithering=none (original)', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         dithering: 'none',
         columns: 40
@@ -319,7 +332,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar con dithering=ordered', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         dithering: 'ordered',
         columns: 40
@@ -330,7 +343,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar con dithering=floyd-steinberg', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         dithering: 'floyd-steinberg',
         columns: 40
@@ -341,7 +354,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería renderizar con dithering=atkinson', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         dithering: 'atkinson',
         columns: 40
@@ -352,7 +365,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería usar none por defecto si dithering no se especifica', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ascii',
         columns: 40
         // dithering no especificado - debería usar 'none' por defecto
@@ -363,7 +376,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('debería aplicar dithering en modo ANSI', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ansi',
         dithering: 'floyd-steinberg',
         columns: 40
@@ -453,7 +466,7 @@ describe('Renderer - Tests de integración', () => {
       const densities = ['original', 'conservative', 'expanded', 'detailed', 'maximum'];
 
       for (const density of densities) {
-        const result = await render(testImageBuffer, {
+        const result = await renderToBuffer(testImageBuffer, {
           mode: 'ascii',
           density: density,
           columns: 40
@@ -465,9 +478,9 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('ASCII debería usar BT.709, otros modos no se afectan', async () => {
-      const resultAscii = await render(testImageBuffer, { mode: 'ascii', columns: 40 });
-      const resultAnsi = await render(testImageBuffer, { mode: 'ansi', columns: 40 });
-      const resultRgb = await render(testImageBuffer, { mode: 'rgb', columns: 40 });
+      const resultAscii = await renderToBuffer(testImageBuffer, { mode: 'ascii', columns: 40 });
+      const resultAnsi = await renderToBuffer(testImageBuffer, { mode: 'ansi', columns: 40 });
+      const resultRgb = await renderToBuffer(testImageBuffer, { mode: 'rgb', columns: 40 });
 
       expect(isValidImage(resultAscii, 'png')).toBe(true);
       expect(isValidImage(resultAnsi, 'png')).toBe(true);
@@ -477,10 +490,10 @@ describe('Renderer - Tests de integración', () => {
     // ── Test de dithering ignorado en modo ASCII ───────────────────────────────
     test('Q-02: Dithering debería ignorarse en modo ASCII (todos dan igual)', async () => {
       // Renderizar ASCII con cada tipo de dithering
-      const resultNone = await render(testImageBuffer, { mode: 'ascii', dithering: 'none', columns: 40 });
-      const resultOrdered = await render(testImageBuffer, { mode: 'ascii', dithering: 'ordered', columns: 40 });
-      const resultFS = await render(testImageBuffer, { mode: 'ascii', dithering: 'floyd-steinberg', columns: 40 });
-      const resultAtkinson = await render(testImageBuffer, { mode: 'ascii', dithering: 'atkinson', columns: 40 });
+      const resultNone = await renderToBuffer(testImageBuffer, { mode: 'ascii', dithering: 'none', columns: 40 });
+      const resultOrdered = await renderToBuffer(testImageBuffer, { mode: 'ascii', dithering: 'ordered', columns: 40 });
+      const resultFS = await renderToBuffer(testImageBuffer, { mode: 'ascii', dithering: 'floyd-steinberg', columns: 40 });
+      const resultAtkinson = await renderToBuffer(testImageBuffer, { mode: 'ascii', dithering: 'atkinson', columns: 40 });
 
       // Todos deberían ser idénticos porque el dithering se ignora en modo ASCII
       expect(resultNone.length).toBe(resultOrdered.length);
@@ -493,8 +506,8 @@ describe('Renderer - Tests de integración', () => {
 
     test('Q-02: Dithering debería funcionar en modos con color (ANSI)', async () => {
       // En modo ANSI, el dithering SÍ debería tener efecto
-      const resultNone = await render(testImageBuffer, { mode: 'ansi', dithering: 'none', columns: 40 });
-      const resultFS = await render(testImageBuffer, { mode: 'ansi', dithering: 'floyd-steinberg', columns: 40 });
+      const resultNone = await renderToBuffer(testImageBuffer, { mode: 'ansi', dithering: 'none', columns: 40 });
+      const resultFS = await renderToBuffer(testImageBuffer, { mode: 'ansi', dithering: 'floyd-steinberg', columns: 40 });
 
       // Los resultados pueden ser diferentes en tamaño debido al procesamiento del dithering
       expect(resultNone.length).toBeGreaterThan(0);
@@ -587,7 +600,7 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('Q-03: Modo 256 debería renderizar correctamente', async () => {
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: '256',
         colorMethod: 'perceptual',
         columns: 40
@@ -599,13 +612,13 @@ describe('Renderer - Tests de integración', () => {
     });
 
     test('Q-03: Modo 256 debería funcionar con ambos colorMethod', async () => {
-      const resultClassic = await render(testImageBuffer, {
+      const resultClassic = await renderToBuffer(testImageBuffer, {
         mode: '256',
         colorMethod: 'classic',
         columns: 40
       });
 
-      const resultPerceptual = await render(testImageBuffer, {
+      const resultPerceptual = await renderToBuffer(testImageBuffer, {
         mode: '256',
         colorMethod: 'perceptual',
         columns: 40
@@ -651,7 +664,7 @@ describe('Renderer - Tests de integración', () => {
       const modes = ['ascii', 'ansi', 'grey', '256', 'rgb'];
 
       for (const mode of modes) {
-        const result = await render(testImageBuffer, {
+        const result = await renderToBuffer(testImageBuffer, {
           mode: mode,
           columns: 40
         });
@@ -680,7 +693,7 @@ describe('Renderer - Tests de integración', () => {
       }).png().toBuffer();
 
       // Renderizar con modo ASCII
-      const result = await render(imageBuffer, {
+      const result = await renderToBuffer(imageBuffer, {
         mode: 'ascii',
         columns: 40
       });
@@ -700,7 +713,7 @@ describe('Renderer - Tests de integración', () => {
       const columnValues = [20, 40, 80, 160];
 
       for (const cols of columnValues) {
-        const result = await render(testImageBuffer, {
+        const result = await renderToBuffer(testImageBuffer, {
           mode: 'rgb',
           columns: cols
         });
@@ -715,7 +728,7 @@ describe('Renderer - Tests de integración', () => {
       // El código actual incluye .rotate() antes de .resize()
 
       // Una forma de verificar: renderizar una imagen y verificar que no hay errores
-      const result = await render(testImageBuffer, {
+      const result = await renderToBuffer(testImageBuffer, {
         mode: 'ansi',
         columns: 40
       });
@@ -723,6 +736,70 @@ describe('Renderer - Tests de integración', () => {
       // Si el pipeline fallaría por EXIF, aquí sería un error
       expect(result).toBeDefined();
       expect(isValidImage(result, 'png')).toBe(true);
+    });
+
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // P-01: Streaming de respuesta PNG/JPEG
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('P-01: Streaming de respuesta PNG/JPEG', () => {
+
+    test('P-01: Render debería retornar objeto con canvas y format', async () => {
+      // Verificar que el modelo ahora retorna { canvas, format }
+      const result = await render(testImageBuffer, { mode: 'rgb', columns: 40 });
+
+      expect(result).toBeDefined();
+      expect(result.canvas).toBeDefined();
+      expect(typeof result.canvas.createPNGStream).toBe('function');
+      expect(result.format).toBe('png');
+    });
+
+    test('P-01: Render debería retornar format correcto para JPG', async () => {
+      const result = await render(testImageBuffer, { mode: 'rgb', format: 'jpg', columns: 40 });
+
+      expect(result).toBeDefined();
+      expect(result.format).toBe('jpg');
+      expect(typeof result.canvas.createJPEGStream).toBe('function');
+    });
+
+    test('P-01: renderToBuffer debería convertir canvas a buffer correctamente', async () => {
+      // El helper renderToBuffer debe funcionar igual que antes
+      const buffer = await renderToBuffer(testImageBuffer, {
+        mode: 'ascii',
+        format: 'png',
+        columns: 40
+      });
+
+      expect(buffer).toBeDefined();
+      expect(buffer.length).toBeGreaterThan(0);
+      expect(isValidImage(buffer, 'png')).toBe(true);
+    });
+
+    test('P-01: renderToBuffer debería funcionar con formato JPG', async () => {
+      const buffer = await renderToBuffer(testImageBuffer, {
+        mode: 'ansi',
+        format: 'jpg',
+        columns: 40
+      });
+
+      expect(buffer).toBeDefined();
+      expect(isValidImage(buffer, 'jpg')).toBe(true);
+    });
+
+    test('P-01: Canvas streams deberían ser disponibles para piping', async () => {
+      const result = await render(testImageBuffer, { mode: 'rgb', columns: 40 });
+
+      // Verificar que podemos crear los streams (como lo hace el controller)
+      const pngStream = result.canvas.createPNGStream();
+      expect(pngStream).toBeDefined();
+      expect(typeof pngStream.pipe).toBe('function');
+
+      const jpegResult = await render(testImageBuffer, { mode: 'rgb', format: 'jpg', columns: 40 });
+      const jpegStream = jpegResult.canvas.createJPEGStream({ quality: 0.92 });
+      expect(jpegStream).toBeDefined();
+      expect(typeof jpegStream.pipe).toBe('function');
     });
 
   });
