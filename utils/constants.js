@@ -14,7 +14,7 @@ const DEFAULT_BRIGHTNESS = 0;
 const DEFAULT_FORMAT     = 'png';
 const DEFAULT_AUTOCONTRAST = false;
 const DEFAULT_DITHERING  = 'none';
-const DEFAULT_DENSITY    = 'original';
+const DEFAULT_DENSITY    = 'detailed';
 const DEFAULT_LUMINANCE  = 'bt709';
 const DEFAULT_COLORMETHOD = 'perceptual';
 

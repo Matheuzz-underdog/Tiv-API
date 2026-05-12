@@ -30,7 +30,7 @@ describe('validateAscii', () => {
     expect(next).toHaveBeenCalled();
     expect(req.renderOptions).toEqual({
       mode: 'ascii', format: 'png', columns: 80, cellSize: 8,
-      brightness: 0, autocontrast: false, density: 'original',
+      brightness: 0, autocontrast: false, density: 'detailed',
       luminance: 'bt709', dithering: 'none',
     });
   });
